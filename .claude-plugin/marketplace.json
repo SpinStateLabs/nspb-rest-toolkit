@@ -1,0 +1,15 @@
+{
+  "name": "nspb-rest-toolkit",
+  "description": "Direct REST access to Oracle EPM Cloud Planning & Budgeting (NSPB) from Claude Code.",
+  "owner": {
+    "name": "Spin State Labs",
+    "url": "https://github.com/spinstatelabs/nspb-rest-toolkit"
+  },
+  "plugins": [
+    {
+      "name": "nspb-rest-toolkit",
+      "source": "./",
+      "description": "Direct REST access to Oracle EPM Cloud Planning & Budgeting (NSPB) -- applications, dimensions, forms, jobs, migration. Reads are always safe; destructive operations always require explicit confirmation."
+    }
+  ]
+}

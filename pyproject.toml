@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nspb-rest-toolkit"
+version = "0.1.0"
+description = "Direct REST toolkit for Oracle EPM Cloud Planning & Budgeting (NSPB) -- Open WebUI Tool, OpenAPI server, and MCP server surfaces"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Spin State Labs" }]
+keywords = ["oracle", "epm", "pbcs", "planning", "nspb", "mcp", "open-webui"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+openwebui = ["fastapi>=0.110", "uvicorn>=0.29"]
+mcp = ["mcp>=2.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "mcp>=2.0",
+]
+
+[project.scripts]
+nspb-smoke-test = "nspb_rest_toolkit.smoke:main"
+
+[project.urls]
+Homepage = "https://github.com/spinstatelabs/nspb-rest-toolkit"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+nspb_rest_toolkit = ["static/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+asyncio_mode = "auto"

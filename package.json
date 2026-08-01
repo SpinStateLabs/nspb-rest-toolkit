@@ -1,0 +1,16 @@
+{
+  "name": "nspb-rest-toolkit-remote",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remote MCP server (Netlify Functions) for nspb-rest-toolkit -- multi-customer SaaS surface for claude.ai and Claude Desktop's remote connector flow. The pip-installable Python package at src/nspb_rest_toolkit is the separate local/stdio surface (Claude Code plugin, Claude Desktop .mcpb extension) -- this directory is additive, not a replacement.",
+  "type": "module",
+  "dependencies": {
+    "@netlify/database": "^1",
+    "@netlify/functions": "^3",
+    "jose": "^5"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5"
+  }
+}
