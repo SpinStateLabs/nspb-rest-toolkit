@@ -1,0 +1,25 @@
+{
+  "mcpServers": {
+    "nspb-rest-toolkit": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--extra", "mcp",
+        "--directory", "${CLAUDE_PLUGIN_ROOT}",
+        "python", "-m", "nspb_rest_toolkit.mcp_server"
+      ],
+      "env": {
+        "NSPB_BASE_URL": "${user_config.base_url}",
+        "NSPB_AUTH_METHOD": "${user_config.auth_method}",
+        "NSPB_USERNAME": "${user_config.username}",
+        "NSPB_PASSWORD": "${user_config.password}",
+        "NSPB_TOKEN": "${user_config.bearer_token}",
+        "NSPB_OAUTH2_IDCS_BASE_URL": "${user_config.oauth2_idcs_base_url}",
+        "NSPB_OAUTH2_CLIENT_ID": "${user_config.oauth2_client_id}",
+        "NSPB_OAUTH2_SERVICE_INSTANCE_ID": "${user_config.oauth2_service_instance_id}",
+        "NSPB_OAUTH2_ALLOW_REFRESH": "${user_config.oauth2_allow_refresh}",
+        "NSPB_OAUTH2_CLIENT_SECRET": "${user_config.oauth2_client_secret}"
+      }
+    }
+  }
+}

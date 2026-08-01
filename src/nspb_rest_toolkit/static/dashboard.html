@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nspb-rest-toolkit -- Connections</title>
+<style>
+  :root {
+    --bg: #0f1420; --panel: #161d2e; --panel-2: #1d2740; --border: #2a3555;
+    --text: #e6ebf5; --text-dim: #9aa7c2; --accent: #4f8cff; --accent-2: #6fa3ff;
+    --ok: #35c07a; --err: #f2495c; --warn: #e5b246;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6fb; --panel: #ffffff; --panel-2: #eef1f8; --border: #dbe1ee;
+      --text: #1b2434; --text-dim: #5a6584; --accent: #2f6fed; --accent-2: #1e56c9;
+      --ok: #1f9d5c; --err: #d63847; --warn: #b8860b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg); color: var(--text); padding: 24px 32px 64px;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 4px; }
+  .subtitle { color: var(--text-dim); font-size: 0.9rem; margin-bottom: 24px; }
+  .toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; gap: 8px; }
+  button {
+    font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); padding: 7px 14px; transition: background .12s;
+  }
+  button:hover { background: var(--border); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: var(--accent-2); }
+  button.danger { color: var(--err); }
+  button.small { padding: 4px 10px; font-size: 0.82rem; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 0.9rem; vertical-align: top; }
+  th { color: var(--text-dim); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: .04em; background: var(--panel-2); }
+  tr:last-child td { border-bottom: none; }
+  .slug { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent-2); }
+  .muted { color: var(--text-dim); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--border); }
+  .badge.basic { color: var(--accent-2); }
+  .badge.oauth2 { color: var(--warn); }
+  .badge.bearer_token { color: var(--ok); }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .test-result { margin-top: 6px; font-size: 0.82rem; }
+  .test-result.ok { color: var(--ok); }
+  .test-result.err { color: var(--err); }
+  .empty { text-align: center; color: var(--text-dim); padding: 40px; }
+
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none;
+    align-items: flex-start; justify-content: center; padding: 40px 16px; overflow-y: auto; z-index: 10;
+  }
+  .overlay.open { display: flex; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    width: 100%; max-width: 560px; padding: 24px;
+  }
+  .modal h2 { margin: 0 0 16px; font-size: 1.1rem; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 0.82rem; color: var(--text-dim); margin-bottom: 4px; }
+  .field input[type=text], .field select {
+    width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); font: inherit;
+  }
+  .field .hint { font-size: 0.76rem; color: var(--text-dim); margin-top: 4px; }
+  .checkbox-row { display: flex; align-items: center; gap: 8px; }
+  .checkbox-row label { margin: 0; }
+  fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 16px 0; padding: 12px 14px 4px; }
+  legend { padding: 0 6px; font-size: 0.82rem; color: var(--text-dim); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+  .error-banner { background: rgba(242,73,92,.12); border: 1px solid var(--err); color: var(--err);
+    border-radius: 6px; padding: 8px 12px; font-size: 0.85rem; margin-bottom: 14px; display: none; }
+</style>
+</head>
+<body>
+
+<h1>nspb-rest-toolkit</h1>
+<div class="subtitle">Connections -- manage and test entries in connections.yaml</div>
+
+<div class="toolbar">
+  <button id="refreshBtn">Refresh</button>
+  <button class="primary" id="addBtn">+ Add connection</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>Slug</th><th>Display name</th><th>Base URL</th><th>Auth</th><th>Test</th><th></th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+<div id="emptyState" class="empty" style="display:none">No connections configured yet.</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="modalTitle">Add connection</h2>
+    <div class="error-banner" id="formError"></div>
+    <form id="connForm">
+      <div class="field">
+        <label for="f-slug">Slug (unique id, used in tool calls)</label>
+        <input type="text" id="f-slug" required pattern="[a-zA-Z0-9_-]+">
+      </div>
+      <div class="field">
+        <label for="f-display_name">Display name</label>
+        <input type="text" id="f-display_name" required>
+      </div>
+      <div class="field">
+        <label for="f-base_url">Base URL</label>
+        <input type="text" id="f-base_url" required placeholder="https://tenant.epm.us-ashburn-1.ocs.oraclecloud.com">
+      </div>
+      <div class="field">
+        <label for="f-auth_method">Auth method</label>
+        <select id="f-auth_method">
+          <option value="basic">basic</option>
+          <option value="oauth2">oauth2</option>
+          <option value="bearer_token">bearer_token</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-credential_ref">Credential ref</label>
+        <input type="text" id="f-credential_ref" required>
+        <div class="hint" id="credRefHint">Env var prefix -- basic resolves &lt;ref&gt;_USERNAME / &lt;ref&gt;_PASSWORD.</div>
+      </div>
+      <div class="field">
+        <label for="f-default_application">Default application (optional)</label>
+        <input type="text" id="f-default_application">
+      </div>
+
+      <fieldset id="oauth2Fields">
+        <legend>OAuth2 (non-secret identifiers only)</legend>
+        <div class="field">
+          <label for="f-idcs_base_url">IDCS base URL</label>
+          <input type="text" id="f-idcs_base_url" placeholder="https://idcs-xxxx.identity.oraclecloud.com">
+        </div>
+        <div class="field">
+          <label for="f-client_id">Client ID</label>
+          <input type="text" id="f-client_id">
+        </div>
+        <div class="field">
+          <label for="f-service_instance_id">Service instance ID</label>
+          <input type="text" id="f-service_instance_id">
+        </div>
+        <div class="field">
+          <label for="f-token_cache_path">Token cache path (optional override)</label>
+          <input type="text" id="f-token_cache_path" placeholder="defaults to ~/.nspb-rest-toolkit/tokens/&lt;slug&gt;.json">
+        </div>
+        <div class="field checkbox-row">
+          <input type="checkbox" id="f-allow_refresh" checked>
+          <label for="f-allow_refresh">Allow refresh (uncheck for session-only access / apps with "Allow token refresh: Disallowed")</label>
+        </div>
+        <div class="field">
+          <label for="f-client_secret_ref">Client secret ref (optional -- only for Confidential Application registrations)</label>
+          <input type="text" id="f-client_secret_ref">
+        </div>
+      </fieldset>
+
+      <div class="modal-actions">
+        <button type="button" id="cancelBtn">Cancel</button>
+        <button type="submit" class="primary" id="saveBtn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const rowsEl = document.getElementById('rows');
+const emptyState = document.getElementById('emptyState');
+const overlay = document.getElementById('overlay');
+const form = document.getElementById('connForm');
+const formError = document.getElementById('formError');
+const oauth2Fields = document.getElementById('oauth2Fields');
+const credRefHint = document.getElementById('credRefHint');
+let editingSlug = null;
+
+const CRED_HINTS = {
+  basic: 'Env var prefix -- resolves &lt;ref&gt;_USERNAME / &lt;ref&gt;_PASSWORD.'.replace(/&lt;/g,'<').replace(/&gt;/g,'>'),
+  bearer_token: 'Env var name holding the pre-obtained JWT, used as-is.',
+  oauth2: 'Unused by oauth2 today -- kept for schema consistency, any placeholder is fine.',
+};
+
+function escapeHtml(s) {
+  return (s ?? '').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function api(path, opts) {
+  const resp = await fetch(path, opts);
+  if (!resp.ok) {
+    let detail = resp.statusText;
+    try { const j = await resp.json(); detail = j.detail || JSON.stringify(j); } catch (e) {}
+    throw new Error(detail);
+  }
+  if (resp.status === 204) return null;
+  return resp.json();
+}
+
+function authBadgeClass(m) { return 'badge ' + m; }
+
+async function loadConnections() {
+  rowsEl.innerHTML = '<tr><td colspan="6" class="muted">Loading...</td></tr>';
+  let conns;
+  try {
+    conns = await api('/api/connections');
+  } catch (e) {
+    rowsEl.innerHTML = `<tr><td colspan="6" class="test-result err">Failed to load: ${escapeHtml(e.message)}</td></tr>`;
+    return;
+  }
+  rowsEl.innerHTML = '';
+  emptyState.style.display = conns.length ? 'none' : 'block';
+  for (const c of conns) {
+    const tr = document.createElement('tr');
+    tr.dataset.slug = c.slug;
+    tr.innerHTML = `
+      <td class="slug">${escapeHtml(c.slug)}</td>
+      <td>${escapeHtml(c.display_name)}</td>
+      <td class="muted">${escapeHtml(c.base_url)}</td>
+      <td><span class="${authBadgeClass(c.auth_method)}">${escapeHtml(c.auth_method)}</span></td>
+      <td>
+        <button class="small testBtn">Test</button>
+        <div class="test-result" data-result></div>
+      </td>
+      <td class="actions">
+        <button class="small editBtn">Edit</button>
+        <button class="small danger deleteBtn">Delete</button>
+      </td>
+    `;
+    tr.querySelector('.testBtn').addEventListener('click', () => runTest(c.slug, tr));
+    tr.querySelector('.editBtn').addEventListener('click', () => openForm(c));
+    tr.querySelector('.deleteBtn').addEventListener('click', () => deleteConnection(c.slug));
+    rowsEl.appendChild(tr);
+  }
+}
+
+async function runTest(slug, tr) {
+  const resultEl = tr.querySelector('[data-result]');
+  resultEl.className = 'test-result';
+  resultEl.textContent = 'Testing...';
+  try {
+    const r = await api(`/api/connections/${encodeURIComponent(slug)}/test`, { method: 'POST' });
+    resultEl.className = 'test-result ' + (r.success ? 'ok' : 'err');
+    resultEl.textContent = `${r.success ? 'OK' : 'FAIL'} (${r.latency_ms}ms) -- ${r.message}`;
+  } catch (e) {
+    resultEl.className = 'test-result err';
+    resultEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+async function deleteConnection(slug) {
+  if (!confirm(`Delete connection '${slug}'? This only removes the connections.yaml entry -- no credentials are stored there to worry about.`)) return;
+  try {
+    await api(`/api/connections/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+    loadConnections();
+  } catch (e) {
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+function setAuthMethodUI(method) {
+  oauth2Fields.style.display = method === 'oauth2' ? 'block' : 'none';
+  credRefHint.innerHTML = CRED_HINTS[method] || '';
+}
+
+function openForm(conn) {
+  editingSlug = conn ? conn.slug : null;
+  document.getElementById('modalTitle').textContent = conn ? `Edit '${conn.slug}'` : 'Add connection';
+  formError.style.display = 'none';
+  form.reset();
+
+  const slugInput = document.getElementById('f-slug');
+  slugInput.value = conn ? conn.slug : '';
+  slugInput.disabled = !!conn;
+
+  document.getElementById('f-display_name').value = conn ? conn.display_name : '';
+  document.getElementById('f-base_url').value = conn ? conn.base_url : '';
+  document.getElementById('f-auth_method').value = conn ? conn.auth_method : 'basic';
+  document.getElementById('f-credential_ref').value = conn ? conn.credential_ref : '';
+  document.getElementById('f-default_application').value = (conn && conn.default_application) || '';
+
+  const o = (conn && conn.oauth2) || {};
+  document.getElementById('f-idcs_base_url').value = o.idcs_base_url || '';
+  document.getElementById('f-client_id').value = o.client_id || '';
+  document.getElementById('f-service_instance_id').value = o.service_instance_id || '';
+  document.getElementById('f-token_cache_path').value = o.token_cache_path || '';
+  document.getElementById('f-allow_refresh').checked = o.allow_refresh !== false;
+  document.getElementById('f-client_secret_ref').value = o.client_secret_ref || '';
+
+  setAuthMethodUI(document.getElementById('f-auth_method').value);
+  overlay.classList.add('open');
+}
+
+function closeForm() {
+  overlay.classList.remove('open');
+  editingSlug = null;
+}
+
+document.getElementById('f-auth_method').addEventListener('change', e => setAuthMethodUI(e.target.value));
+document.getElementById('addBtn').addEventListener('click', () => openForm(null));
+document.getElementById('cancelBtn').addEventListener('click', closeForm);
+document.getElementById('refreshBtn').addEventListener('click', loadConnections);
+overlay.addEventListener('click', e => { if (e.target === overlay) closeForm(); });
+
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  formError.style.display = 'none';
+
+  const slug = document.getElementById('f-slug').value.trim();
+  const authMethod = document.getElementById('f-auth_method').value;
+
+  const body = {
+    display_name: document.getElementById('f-display_name').value.trim(),
+    base_url: document.getElementById('f-base_url').value.trim(),
+    auth_method: authMethod,
+    credential_ref: document.getElementById('f-credential_ref').value.trim(),
+    default_application: document.getElementById('f-default_application').value.trim() || null,
+    oauth2: null,
+  };
+
+  if (authMethod === 'oauth2') {
+    body.oauth2 = {
+      idcs_base_url: document.getElementById('f-idcs_base_url').value.trim(),
+      client_id: document.getElementById('f-client_id').value.trim(),
+      service_instance_id: document.getElementById('f-service_instance_id').value.trim(),
+      token_cache_path: document.getElementById('f-token_cache_path').value.trim() || null,
+      allow_refresh: document.getElementById('f-allow_refresh').checked,
+      client_secret_ref: document.getElementById('f-client_secret_ref').value.trim() || null,
+    };
+  }
+
+  try {
+    if (editingSlug) {
+      await api(`/api/connections/${encodeURIComponent(editingSlug)}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+    } else {
+      await api(`/api/connections/${encodeURIComponent(slug)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+    }
+    closeForm();
+    loadConnections();
+  } catch (err) {
+    formError.textContent = err.message;
+    formError.style.display = 'block';
+  }
+});
+
+loadConnections();
+</script>
+</body>
+</html>

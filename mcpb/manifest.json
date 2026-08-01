@@ -1,0 +1,113 @@
+{
+  "manifest_version": "0.4",
+  "name": "nspb-rest-toolkit",
+  "display_name": "NSPB REST Toolkit (Oracle EPM Cloud)",
+  "version": "0.1.0",
+  "description": "Direct REST access to Oracle EPM Cloud Planning & Budgeting (NSPB) -- applications, dimensions, forms, jobs, migration, and more.",
+  "long_description": "Talks directly to Oracle EPM Cloud's Planning & Budgeting REST APIs over HTTPS -- no Windows, PowerShell, or EPM Automate CLI dependency. Supports Basic Auth, OAuth2 (Device Code flow, for MFA-enforcing tenants), and static Bearer tokens. Reads are always safe to call; every destructive operation (writes, business rules, imports, status changes) requires an explicit confirmation step before it runs -- the model must describe the change and wait for you to approve before it's allowed to proceed.",
+  "author": {
+    "name": "Spin State Labs",
+    "url": "https://github.com/spinstatelabs/nspb-rest-toolkit"
+  },
+  "server": {
+    "type": "uv",
+    "entry_point": "server/main.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--extra", "mcp",
+        "--directory", "${__dirname}",
+        "server/main.py"
+      ],
+      "env": {
+        "NSPB_BASE_URL": "${user_config.base_url}",
+        "NSPB_AUTH_METHOD": "${user_config.auth_method}",
+        "NSPB_USERNAME": "${user_config.username}",
+        "NSPB_PASSWORD": "${user_config.password}",
+        "NSPB_TOKEN": "${user_config.bearer_token}",
+        "NSPB_OAUTH2_IDCS_BASE_URL": "${user_config.oauth2_idcs_base_url}",
+        "NSPB_OAUTH2_CLIENT_ID": "${user_config.oauth2_client_id}",
+        "NSPB_OAUTH2_SERVICE_INSTANCE_ID": "${user_config.oauth2_service_instance_id}",
+        "NSPB_OAUTH2_ALLOW_REFRESH": "${user_config.oauth2_allow_refresh}",
+        "NSPB_OAUTH2_CLIENT_SECRET": "${user_config.oauth2_client_secret}"
+      }
+    }
+  },
+  "keywords": ["oracle", "epm", "pbcs", "planning", "nspb", "budgeting", "finance"],
+  "license": "MIT",
+  "user_config": {
+    "base_url": {
+      "type": "string",
+      "title": "EPM Base URL",
+      "description": "Your Oracle EPM Cloud tenant base URL, e.g. https://<tenant>.epm.<region>.ocs.oraclecloud.com (no trailing path).",
+      "required": true
+    },
+    "auth_method": {
+      "type": "string",
+      "title": "Auth Method",
+      "description": "One of: basic, oauth2, bearer_token. Use 'basic' unless your tenant enforces MFA (then use 'oauth2') or you already have a static token (then use 'bearer_token').",
+      "default": "basic",
+      "required": true
+    },
+    "username": {
+      "type": "string",
+      "title": "Username (Basic Auth)",
+      "description": "Only used when Auth Method is 'basic'.",
+      "required": false
+    },
+    "password": {
+      "type": "string",
+      "title": "Password (Basic Auth)",
+      "description": "Only used when Auth Method is 'basic'. Stored securely by Claude Desktop, never in plain text.",
+      "sensitive": true,
+      "required": false
+    },
+    "bearer_token": {
+      "type": "string",
+      "title": "Bearer Token",
+      "description": "Only used when Auth Method is 'bearer_token' -- a pre-obtained static JWT from your Oracle Identity Domain console's 'Tokens and keys' page.",
+      "sensitive": true,
+      "required": false
+    },
+    "oauth2_idcs_base_url": {
+      "type": "string",
+      "title": "OAuth2: IDCS Base URL",
+      "description": "Only used when Auth Method is 'oauth2'. Your Oracle Identity Domain's base URL, e.g. https://idcs-xxxx.identity.oraclecloud.com.",
+      "required": false
+    },
+    "oauth2_client_id": {
+      "type": "string",
+      "title": "OAuth2: Client ID",
+      "description": "Only used when Auth Method is 'oauth2'. The OAuth2 application's Client ID from the IDCS console.",
+      "required": false
+    },
+    "oauth2_service_instance_id": {
+      "type": "string",
+      "title": "OAuth2: Service Instance ID",
+      "description": "Only used when Auth Method is 'oauth2'. Found on the app's OAuth configuration page (Primary audience: urn:opc:serviceInstanceID=<this value>).",
+      "required": false
+    },
+    "oauth2_allow_refresh": {
+      "type": "boolean",
+      "title": "OAuth2: Allow Refresh",
+      "description": "Only used when Auth Method is 'oauth2'. Uncheck for session-only access, or if the app's IDCS config has 'Allow token refresh' set to Disallowed.",
+      "default": true,
+      "required": false
+    },
+    "oauth2_client_secret": {
+      "type": "string",
+      "title": "OAuth2: Client Secret",
+      "description": "Only used when Auth Method is 'oauth2' AND the app is registered as a Confidential Application (has a Client Secret in the IDCS console). Leave blank for public-client apps.",
+      "sensitive": true,
+      "required": false
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.10.0 <4"
+    }
+  }
+}
