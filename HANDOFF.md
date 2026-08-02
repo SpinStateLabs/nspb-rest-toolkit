@@ -209,15 +209,89 @@ matter for a public marketplace listing). Neither was asked for yet.
 
 ## Still open, next up
 
-5. **"public endpoint... deploy to netlify."** Not started. This reopens a question this project explicitly
-   parked earlier (see `[[nspb-rest-toolkit]]` memory, "park this in favor of the local stdio MCP server
-   model") -- the user has now asked for it directly, unblocking it, but the exact shape ("personal remote
-   access for you" vs. "real multi-customer SaaS other people sign up for") was never confirmed; an
-   AskUserQuestion about this went unanswered (the user moved straight to the plugin/MCPB ask instead).
-   Default to the smaller-scope "personal remote access" reading unless told otherwise, since Netlify
-   Functions are stateless (no persistent `connections.yaml`-equivalent filesystem, no place for an OAuth2
-   token cache to live between invocations) -- a real multi-customer version needs a proper secrets backend
-   and per-tenant isolation design, not just "click deploy."
+5. **Full multi-customer SaaS on Netlify, all 3 Claude surfaces (Code CLI, Desktop, claude.ai), marketplace-
+   based plugin distribution.** User explicitly confirmed the big-scope version (not the smaller "personal
+   remote access" reading this file previously defaulted to) and asked for it directly, unblocking the
+   "remote/HTTP MCP connector" question `[[nspb-rest-toolkit]]` memory had said to park.
+
+   **Blocked on two things only the user can do (account creation is outside what the assistant does itself):**
+   - **GitHub repo + push access.** Generated a dedicated SSH deploy key (`~/.ssh/nspb_rest_toolkit_deploy`,
+     this repo's `core.sshCommand` already points at it) -- user needs to create an empty repo (chose
+     `spinstatelabs/nspb-rest-toolkit` as the working name, not yet confirmed as final) and add the deploy
+     key with write access, then send the repo URL. First commit is already made locally, ready to push the
+     moment a remote exists.
+   - **Auth0 tenant**, for OAuth 2.1 (chosen over hand-rolling an authorization server -- this product will
+     store customers' real Oracle EPM credentials, so using a proven, audited identity platform is a
+     deliberate security choice, not just convenience). User needs to sign up, create a tenant + application,
+     and give the domain + client ID. `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` env vars are already referenced by
+     the code below, unset until then. Dynamic Client Registration approach for claude.ai's auto-connect flow
+     is NOT yet decided -- needs to be resolved once real tenant access exists (Auth0 doesn't support
+     anonymous DCR the way the MCP spec's reference flow assumes; likely either a pre-registered "claude.ai"
+     client or a thin custom DCR shim calling Auth0's Management API -- don't guess this blind).
+
+   **Scaffolded and locally verified (TypeScript compiles clean, `tsc --noEmit` passes) but NOT deployed or
+   live-tested yet -- everything below is unverified against a real Auth0 tenant or real Netlify deploy:**
+   - `package.json` / `tsconfig.json` / `netlify.toml` -- Node/TypeScript, `@netlify/functions` +
+     `@netlify/database` + `jose` (JWKS-based JWT verification, no shared secret with Auth0).
+   - `netlify/database/migrations/20260801000000_create_customers_and_connections/migration.sql` --
+     `customers` (keyed by Auth0 `sub`) + `connections` (per-customer, mirrors `ConnectionConfig`'s shape,
+     credentials encrypted) + `oauth2_token_cache` (remote equivalent of the local surface's on-disk token
+     cache, since there's no per-customer filesystem here).
+   - `netlify/functions/lib/crypto.ts` -- AES-256-GCM for credentials at rest, key from
+     `CREDENTIALS_ENCRYPTION_KEY` (Netlify env var, not yet generated/set -- generate with
+     `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` once ready to deploy).
+   - `netlify/functions/lib/auth.ts` -- verifies Auth0-issued Bearer tokens via JWKS, upserts a `customers`
+     row on first sight of a new `sub`.
+   - `netlify/functions/mcp.mts` -- the remote MCP endpoint (Streamable HTTP, JSON-response mode, no SSE
+     needed yet). Tool set is a deliberate **starting subset** (`list_connections`, `list_applications`) that
+     proves the full pipeline end to end, NOT full parity with the ~30 operations the local Python surface
+     has -- see `netlify/functions/lib/oracle-client.ts`'s docstring for how to extend it, following the same
+     already-proven-correct patterns (`unwrap_items`, explicit charset, etc.) from `src/nspb_rest_toolkit/client.py`.
+     `auth_method: oauth2` is NOT implemented on this surface yet (`basic`/`bearer_token` only) -- the schema
+     has the columns for it but `lib/oracle-client.ts`'s `authHeader()` throws a clear 501 if attempted.
+   - `netlify/functions/connections.mts` -- per-customer CRUD API, the DB-backed equivalent of
+     `dashboard_api.py`. No customer-facing web UI for this yet (no equivalent of `static/dashboard.html`) --
+     API only.
+   - `netlify/functions/oauth-protected-resource.mts` -- RFC 9728 discovery endpoint so an MCP client knows
+     to authenticate against Auth0.
+   - `.claude-plugin/marketplace.json` -- passes `claude plugin validate`, points at `./` (this repo) as the
+     plugin source. Not yet installable via `/plugin marketplace add owner/repo` since there's no remote yet.
+
+   **Explicitly not started:** Desktop's remote-connector wiring (separate from the already-working local
+   `.mcpb`), a customer-facing signup/connections-management web page for the SaaS surface, and porting the
+   remaining ~28 Oracle operations beyond the two-tool proof-of-pipeline subset.
+
+   **Update, same day, after the user completed both account-creation steps:**
+   - GitHub repo live at `github.com/SpinStateLabs/nspb-rest-toolkit`, deploy key working, first commit
+     pushed (`master`).
+   - Auth0 tenant: `dev-ya4wqjm000nn3amg.us.auth0.com`, API audience
+     `https://nspb-rest-toolkit.spinstatelabs.com/api`. **Resolved the DCR question flagged above by actually
+     checking the docs (WebFetch, not a guess): Auth0 has real, spec-compliant OIDC Dynamic Client
+     Registration built in** (`POST /oidc/register`, no manual per-client setup) -- this means claude.ai
+     registers itself automatically and my server never needs a hand-rolled DCR shim, just the
+     protected-resource-metadata endpoint already built pointing at Auth0. Two dashboard steps needed from
+     the user to turn it on, given at the time: (1) Applications -> APIs -> the API -> Settings -> Default
+     Permissions for Third-Party Applications -> Authorized for User-Delegated Access -> `openid profile
+     email`; (2) Settings -> Advanced -> enable Dynamic Client Registration. **Known follow-up, not yet
+     done**: Auth0's own docs warn that DCR without extra protection means anyone on the internet can
+     register a client against the tenant -- fine for getting the pipeline working, but should be tightened
+     (Auth0 mentions a "CIMD" alternative with domain-verified identities) before onboarding real customers.
+     The two pre-existing Application client IDs the user initially sent (a "Default App" / Generic type, and
+     an M2M "Test Application") turned out to be **not needed** for this flow -- DCR creates claude.ai's
+     client automatically, and M2M apps are for server-to-server calls, not user login.
+   - Netlify: site created (`nspb-rest-toolkit`, id `7e508972-17a1-46fd-a5b9-8aec97ae77bc`,
+     `nspb-rest-toolkit.netlify.app`), all three env vars set (`AUTH0_DOMAIN`, `AUTH0_AUDIENCE`,
+     `CREDENTIALS_ENCRYPTION_KEY` -- the last one generated locally via Node's `crypto.randomBytes`, set
+     directly through the Netlify env-var API, never shown to the user or logged anywhere). Netlify DB will
+     auto-provision on first deploy (confirmed via `initialize-database` -- just needs the `@netlify/database`
+     dependency present, which it is). **Still needed, one more one-time UI step**: the available Netlify MCP
+     tools can create a site and set env vars but don't expose git-repo linking -- the user needs to link the
+     GitHub repo for continuous deployment themselves (Site configuration -> Build & deploy -> Continuous
+     deployment -> Link repository -> GitHub -> `SpinStateLabs/nspb-rest-toolkit`). Once linked, every push
+     auto-deploys with no further manual steps.
+   - Not yet verified live: the actual deploy (no build has run yet), the DB migration applying successfully,
+     Auth0 token verification against a real token, or an actual end-to-end claude.ai connector test. All of
+     this needs the repo-link step above before it can be tested.
 
 ## Open questions from the original task brief, still never answered
 
