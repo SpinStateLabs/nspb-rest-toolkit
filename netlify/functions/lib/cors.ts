@@ -28,3 +28,30 @@ export function withCors(req: Request, res: Response): Response {
 export function preflightResponse(req: Request): Response {
   return new Response(null, { status: 204, headers: corsHeaders(req) });
 }
+
+/**
+ * Guarantees every response -- including one from a completely unexpected
+ * crash (a DB outage, a bad env var) -- carries CORS headers. Without this,
+ * an uncaught exception skips withCors() entirely and Netlify's own default
+ * error page has no Access-Control-Allow-Origin header, which the browser
+ * reports as a bare network failure with no detail: exactly what surfaced
+ * to the user as claude.ai's generic "Couldn't connect to the server."
+ */
+export async function corsGuard(req: Request, handler: (req: Request) => Promise<Response>): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return preflightResponse(req);
+  }
+  try {
+    const res = await handler(req);
+    return withCors(req, res);
+  } catch (err) {
+    console.error("Unhandled error in function handler:", err);
+    return withCors(
+      req,
+      new Response(JSON.stringify({ error: "internal_error", message: "Internal server error." }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      })
+    );
+  }
+}

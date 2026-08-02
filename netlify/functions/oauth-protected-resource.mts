@@ -5,37 +5,29 @@
  * without being told that URL out of band.
  */
 import type { Config } from "@netlify/functions";
-import { withCors, preflightResponse } from "./lib/cors.js";
+import { corsGuard } from "./lib/cors.js";
 
-export default async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return preflightResponse(req);
-  }
+export default async (req: Request) => corsGuard(req, handle);
 
+async function handle(req: Request): Promise<Response> {
   const domain = Netlify.env.get("AUTH0_DOMAIN");
   const siteUrl = Netlify.env.get("URL") ?? new URL(req.url).origin;
 
   if (!domain) {
-    return withCors(
-      req,
-      new Response(JSON.stringify({ error: "server_misconfigured" }), {
-        status: 500,
-        headers: { "content-type": "application/json" },
-      })
-    );
+    return new Response(JSON.stringify({ error: "server_misconfigured" }), {
+      status: 500,
+      headers: { "content-type": "application/json" },
+    });
   }
 
-  return withCors(
-    req,
-    new Response(
-      JSON.stringify({
-        resource: `${siteUrl}/mcp`,
-        authorization_servers: [`https://${domain}/`],
-      }),
-      { headers: { "content-type": "application/json" } }
-    )
+  return new Response(
+    JSON.stringify({
+      resource: `${siteUrl}/mcp`,
+      authorization_servers: [`https://${domain}/`],
+    }),
+    { headers: { "content-type": "application/json" } }
   );
-};
+}
 
 export const config: Config = {
   path: "/.well-known/oauth-protected-resource",
