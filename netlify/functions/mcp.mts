@@ -21,6 +21,7 @@ import type { Config } from "@netlify/functions";
 import { authenticate, AuthError } from "./lib/auth.js";
 import { listConnections, getResolvedConnection } from "./lib/connections-repo.js";
 import { listApplications, OracleApiError } from "./lib/oracle-client.js";
+import { withCors, preflightResponse } from "./lib/cors.js";
 
 interface JsonRpcRequest {
   jsonrpc: "2.0";
@@ -60,7 +61,19 @@ const TOOLS = [
 ];
 
 export default async (req: Request) => {
+  const res = await handle(req);
+  return withCors(req, res);
+};
+
+async function handle(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return preflightResponse(req);
+  }
+
   if (req.method !== "POST") {
+    // Spec-legal: a Streamable HTTP server that doesn't offer a
+    // server-initiated SSE stream MAY answer GET with 405 (MCP spec,
+    // "Listening for Messages from the Server", point 3).
     return new Response("Method not allowed -- MCP Streamable HTTP uses POST.", { status: 405 });
   }
 
@@ -148,7 +161,7 @@ export default async (req: Request) => {
     // a stack trace from lib/connections-repo.ts) reach the client.
     return jsonRpcError(id, -32603, "Internal error.", 500);
   }
-};
+}
 
 export const config: Config = {
   path: "/mcp",
