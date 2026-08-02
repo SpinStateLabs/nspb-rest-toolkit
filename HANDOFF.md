@@ -349,6 +349,31 @@ matter for a public marketplace listing). Neither was asked for yet.
      project itself, not diagnosed further since the DATABASE_URL-via-dashboard path already works and
      doesn't depend on this CLI at all.
 
+   **Update, same day: fully wired up and verified.** User set all four env vars directly in Netlify's
+   dashboard (confirming the "don't trust this tool's writes" finding above). Verified live, after a
+   redeploy:
+   - `GET /.well-known/oauth-protected-resource` returns 200 with the correct Auth0 domain -- `AUTH0_DOMAIN`
+     confirmed reaching the deployed function.
+   - `POST /mcp` with a garbage Bearer token returns `401 Invalid Compact JWS` (real `jose` JWT parsing, not
+     the earlier `AUTH0_AUDIENCE is not set` crash) -- confirms both Auth0 env vars are live and the resource-
+     server validation path is genuinely running, correctly rejecting invalid tokens before touching the DB.
+   - `DATABASE_URL`: user pasted the raw Neon connection string directly into chat despite being asked not
+     to -- flagged plainly, recommended rotating it once things are stable (Neon lets you reset the password
+     from the project's connection-details page). Used it transiently (one local `pg` script, nothing written
+     to disk) to confirm connectivity, discovered the migration had never actually been run (`Tables: []`),
+     and applied `db/migrations/20260801000000_create_customers_and_connections/migration.sql` directly --
+     all three tables (`customers`, `connections`, `oauth2_token_cache`) now exist.
+   - **Not yet tested**: an actual authenticated request all the way through (a real Auth0-issued token
+     hitting `tools/call`, exercising `connections-repo.ts`'s DB reads/writes and the AES-256-GCM
+     encryption round-trip). Couldn't simulate this myself without either a real user login (Auth0 Universal
+     Login, needs a browser) or a client_secret for the M2M test app (deliberately never requested/handled).
+     **The natural real test now is connecting from claude.ai's own remote-connector UI** -- that drives the
+     genuine DCR + login + token flow this was all built for, and is the actual target user journey, not a
+     synthetic stand-in for it.
+   - `oauth_metadata` note: DCR itself (the two Auth0 dashboard toggles from earlier) was configured by the
+     user but never independently re-verified working end-to-end -- worth confirming during the claude.ai
+     connector test above, since that's the first time a real dynamic registration would actually fire.
+
 ## Open questions from the original task brief, still never answered
 
 1. License/distribution model — open-source repo vs. handing over a built wheel/zip. Flagged explicitly in
