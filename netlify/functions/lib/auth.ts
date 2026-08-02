@@ -14,7 +14,7 @@
  */
 
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
-import { getDatabase } from "@netlify/database";
+import { getDatabase } from "./db.js";
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 

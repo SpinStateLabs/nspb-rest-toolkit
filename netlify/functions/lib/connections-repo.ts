@@ -8,7 +8,7 @@
  * an env var at call time.
  */
 
-import { getDatabase } from "@netlify/database";
+import { getDatabase } from "./db.js";
 import { encryptSecret, decryptSecret } from "./crypto.js";
 
 export type AuthMethod = "basic" | "oauth2" | "bearer_token";
