@@ -81,17 +81,24 @@ export async function authenticate(req: Request): Promise<AuthenticatedCustomer>
     throw new AuthError("Token has no 'sub' claim.", 401);
   }
 
-  const db = getDatabase();
-  const existing = await db.sql`SELECT id FROM customers WHERE auth0_sub = ${sub}`;
-  if (existing.length > 0) {
-    return { customerId: existing[0].id as string, auth0Sub: sub };
-  }
+  try {
+    const db = getDatabase();
+    const existing = await db.sql`SELECT id FROM customers WHERE auth0_sub = ${sub}`;
+    if (existing.length > 0) {
+      return { customerId: existing[0].id as string, auth0Sub: sub };
+    }
 
-  const email = typeof payload.email === "string" ? payload.email : null;
-  const [created] = await db.sql`
-    INSERT INTO customers (auth0_sub, email) VALUES (${sub}, ${email})
-    ON CONFLICT (auth0_sub) DO UPDATE SET updated_at = NOW()
-    RETURNING id
-  `;
-  return { customerId: created.id as string, auth0Sub: sub };
+    const email = typeof payload.email === "string" ? payload.email : null;
+    const [created] = await db.sql`
+      INSERT INTO customers (auth0_sub, email) VALUES (${sub}, ${email})
+      ON CONFLICT (auth0_sub) DO UPDATE SET updated_at = NOW()
+      RETURNING id
+    `;
+    return { customerId: created.id as string, auth0Sub: sub };
+  } catch (err) {
+    // A valid token but a broken customer lookup/insert is a server problem,
+    // not an auth problem -- surface it as 500, not a misleading 401.
+    console.error("Failed to resolve customer record for authenticated subject:", err);
+    throw new AuthError("Failed to resolve customer account.", 500);
+  }
 }
