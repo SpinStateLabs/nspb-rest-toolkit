@@ -17,12 +17,22 @@
 import type { Config } from "@netlify/functions";
 import { authenticate, AuthError } from "./lib/auth.js";
 import { listConnections, upsertConnection, deleteConnection, type ConnectionWrite } from "./lib/connections-repo.js";
+import { withCors, preflightResponse } from "./lib/cors.js";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
 export default async (req: Request) => {
+  const res = await handle(req);
+  return withCors(req, res);
+};
+
+async function handle(req: Request): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return preflightResponse(req);
+  }
+
   let customer;
   try {
     customer = await authenticate(req);
@@ -64,7 +74,7 @@ export default async (req: Request) => {
   }
 
   return json({ error: "Method not allowed." }, 405);
-};
+}
 
 export const config: Config = {
   path: ["/api/connections", "/api/connections/*"],
