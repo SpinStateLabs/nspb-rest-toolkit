@@ -249,16 +249,32 @@ Add as many connections as you have customers, mixing auth methods freely
 
 ## 3. Install into Open WebUI
 
-1. Make sure `nspb-rest-toolkit` is installed in Open WebUI's Python
-   environment (Open WebUI's tool loader reads the `requirements:` line at
-   the top of [src/nspb_rest_toolkit/openwebui_tool.py](src/nspb_rest_toolkit/openwebui_tool.py)
-   and pip-installs it automatically the first time the tool is added).
-2. In Open WebUI: **Workspace -> Tools -> +**, then paste the full contents
-   of `openwebui_tool.py`.
-3. Open the tool's **Valves** and set `config_path` to the path of your
-   `connections.yaml` on the Open WebUI host (or a volume-mounted path if
-   running in a container).
-4. Enable the tool for whichever model/workspace should use it.
+1. In Open WebUI: **Workspace -> Tools -> +**, then paste the full contents
+   of [src/nspb_rest_toolkit/openwebui_tool.py](src/nspb_rest_toolkit/openwebui_tool.py).
+   Open WebUI reads the `requirements:` line at the top of that file and
+   pip-installs `nspb-rest-toolkit` into its own Python environment
+   automatically the first time the tool is added -- no separate install
+   step.
+2. Open the tool's **Valves** (the gear icon next to the tool) -- this is
+   Open WebUI's own settings-form UI, the same idea as Claude Desktop's
+   config screen. For a **single connection** (the common case), just fill
+   in directly there:
+   - `base_url` -- your EPM tenant's base URL
+   - `auth_method` -- `basic` (default), `oauth2`, or `bearer_token`
+   - `username` / `password` -- for `basic`
+   - `bearer_token` -- for `bearer_token`
+   - `oauth2_idcs_base_url` / `oauth2_client_id` / `oauth2_service_instance_id`
+     (+ optionally `oauth2_allow_refresh` / `oauth2_client_secret`) -- for
+     `oauth2` (still needs the one-time interactive bootstrap described
+     above -- see the `oauth2` section's caveat)
+
+   Leave `config_path` at its default (`connections.yaml`) for this case --
+   nothing needs to exist at that path. For **multiple customer
+   connections**, set `config_path` to a real `connections.yaml` on the Open
+   WebUI host instead (or a volume-mounted path if running in a container);
+   a real file there always takes priority over the single-connection
+   fields above.
+3. Enable the tool for whichever model/workspace should use it.
 
 ## 4. Install into Claude (Desktop or Code)
 

@@ -301,6 +301,15 @@ def test_load_config_from_env_oauth2_full(monkeypatch):
     assert conn.oauth2.client_secret_ref == "NSPB_OAUTH2_CLIENT_SECRET"
 
 
+def test_load_config_from_env_custom_getenv_source(monkeypatch):
+    # Confirms the getenv override is genuinely used instead of os.environ --
+    # openwebui_tool.py relies on this to source values from Valves.
+    monkeypatch.delenv("NSPB_BASE_URL", raising=False)  # not set in the real environment
+    values = {"NSPB_BASE_URL": "https://from-valves.example.com", "NSPB_AUTH_METHOD": "basic"}
+    cfg = load_config_from_env(getenv=lambda key: values.get(key))
+    assert cfg.get("default").base_url == "https://from-valves.example.com"
+
+
 def test_load_config_from_env_display_name_default(monkeypatch):
     monkeypatch.setenv("NSPB_BASE_URL", "https://demo.example.com")
     monkeypatch.delenv("NSPB_DISPLAY_NAME", raising=False)
