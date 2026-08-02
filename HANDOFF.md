@@ -293,6 +293,40 @@ matter for a public marketplace listing). Neither was asked for yet.
      Auth0 token verification against a real token, or an actual end-to-end claude.ai connector test. All of
      this needs the repo-link step above before it can be tested.
 
+   **Update, same day, after the repo link: build ran and failed at DB provisioning.** `Provisioning
+   database... API error on "createSiteDatabase"... 403 database feature not available for this account`.
+   Root cause (confirmed by checking Netlify's own extension page, not guessed): **Netlify DB's
+   auto-provisioning (`@netlify/database`, the whole "installing the package + deploying auto-provisions
+   Postgres" mechanism this was originally built around) has been discontinued for new databases.** Installing
+   the "Neon" extension via the Netlify API didn't fix it -- same 403 persisted -- because the extension
+   itself shows "Deprecation Notice: This Netlify DB extension (powered by @netlify/neon) has been
+   discontinued. New database creation is no longer available through this extension... An improved Netlify DB
+   experience is coming soon." `npx netlify db init` (the alternative the deprecation notice itself points at)
+   needs interactive browser login this session can't complete.
+
+   **Pivoted away from `@netlify/database` entirely** rather than depend on Netlify's mid-transition DB story:
+   - New `netlify/functions/lib/db.ts` -- plain `pg.Pool` against a manually-set `DATABASE_URL`, exposing the
+     same `getDatabase().sql` tagged-template shape `connections-repo.ts`/`auth.ts` already used, so both
+     files needed only an import-line change.
+   - `package.json`: removed `@netlify/database`, added `pg` + `@types/pg`. `tsc --noEmit` clean.
+   - **Moved the migration out of `netlify/database/migrations/`** to `db/migrations/` -- Netlify's build
+     system auto-scans that exact path and retries the now-broken auto-provisioning regardless of whether
+     `@netlify/database` is even a dependency; leaving the migration there would keep failing every build.
+     `db/migrations/README.md` explains the new manual-apply process (`psql "$DATABASE_URL" -f
+     db/migrations/<dir>/migration.sql`, or paste into a web SQL editor).
+
+   **Still needed to actually go live, all account-level actions only the user can do:**
+   1. A real Postgres database -- Neon directly (neon.tech) is the natural choice (that's literally what the
+      deprecated extension was wrapping); the user may already have a Neon account/project from having
+      interacted with the extension ("any claimed databases remain in your Neon account" per Netlify's own
+      notice) -- worth checking before creating a new one.
+   2. Run `db/migrations/20260801000000_create_customers_and_connections/migration.sql` once against that
+      database -- Neon's own web SQL editor works fine for this, no local `psql` needed, and means the
+      connection string never has to be pasted anywhere outside Neon's own UI.
+   3. Set `DATABASE_URL` (the connection string Neon gives after creating the project) as a Netlify env var
+      for this site, same as the three already set -- never through chat.
+   4. Push (or just re-trigger a deploy) once `DATABASE_URL` is set to get a clean build.
+
 ## Open questions from the original task brief, still never answered
 
 1. License/distribution model — open-source repo vs. handing over a built wheel/zip. Flagged explicitly in
