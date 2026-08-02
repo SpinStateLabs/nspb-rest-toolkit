@@ -28,12 +28,14 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from nspb_rest_toolkit.client import EPMClient
-from nspb_rest_toolkit.config import load_config
+from nspb_rest_toolkit.config import ToolkitConfig, load_config, load_config_from_env
 from nspb_rest_toolkit.endpoints import applications as ep_applications
 from nspb_rest_toolkit.endpoints import approvals as ep_approvals
 from nspb_rest_toolkit.endpoints import data_management as ep_data_management
@@ -43,6 +45,7 @@ from nspb_rest_toolkit.endpoints import jobs as ep_jobs
 from nspb_rest_toolkit.endpoints import migration as ep_migration
 from nspb_rest_toolkit.endpoints import security as ep_security
 from nspb_rest_toolkit.endpoints import substitution_variables as ep_subvars
+from nspb_rest_toolkit.exceptions import EPMConfigError
 
 
 def _render(value: Any) -> str:
@@ -55,15 +58,89 @@ class Tools:
     class Valves(BaseModel):
         config_path: str = Field(
             default="connections.yaml",
-            description="Path (on the Open WebUI host) to the multi-tenant connections.yaml file.",
+            description=(
+                "Path (on the Open WebUI host) to a multi-tenant connections.yaml file. "
+                "Only needed for multiple customer connections -- leave at the default and "
+                "fill in the single-connection fields below instead if you just have one."
+            ),
+        )
+
+        # Zero-config single-connection fields -- fill these in directly here in Valves
+        # instead of creating a connections.yaml file at all. Used only when config_path
+        # doesn't point at a real file (see _load_config below); mirrors
+        # config.load_config_from_env's NSPB_* env vars field-for-field, just sourced from
+        # Valves (Open WebUI's own config-screen mechanism) instead of the process
+        # environment -- see that function's docstring for what each field does.
+        base_url: str = Field(default="", description="EPM base URL, e.g. https://tenant.epm.us-ashburn-1.ocs.oraclecloud.com")
+        auth_method: str = Field(default="basic", description="One of: basic, oauth2, bearer_token.")
+        username: str = Field(default="", description="Basic Auth username. Only used when auth_method=basic.")
+        password: str = Field(default="", description="Basic Auth password. Only used when auth_method=basic.")
+        bearer_token: str = Field(default="", description="Static JWT. Only used when auth_method=bearer_token.")
+        oauth2_idcs_base_url: str = Field(default="", description="Only used when auth_method=oauth2.")
+        oauth2_client_id: str = Field(default="", description="Only used when auth_method=oauth2.")
+        oauth2_service_instance_id: str = Field(default="", description="Only used when auth_method=oauth2.")
+        oauth2_allow_refresh: bool = Field(
+            default=True,
+            description="Only used when auth_method=oauth2. Uncheck for session-only access, or if the "
+            "app's IDCS config has 'Allow token refresh' set to Disallowed.",
+        )
+        oauth2_client_secret: str = Field(
+            default="",
+            description="Only used when auth_method=oauth2 AND the app is a Confidential Application "
+            "(has a Client Secret in the IDCS console). Leave blank for public-client apps.",
         )
 
     def __init__(self) -> None:
         self.valves = self.Valves()
 
+    def _load_config(self) -> ToolkitConfig:
+        """A real connections.yaml always wins when present (multi-tenant path); otherwise
+        fall back to the single-connection Valves fields above. Mirrors runtime.get_config()'s
+        same file-then-zero-config priority for the MCP/OpenAPI surfaces.
+        """
+        if Path(self.valves.config_path).exists():
+            return load_config(self.valves.config_path)
+
+        valve_values = {
+            "NSPB_BASE_URL": self.valves.base_url,
+            "NSPB_AUTH_METHOD": self.valves.auth_method,
+            "NSPB_USERNAME": self.valves.username,
+            "NSPB_PASSWORD": self.valves.password,
+            "NSPB_TOKEN": self.valves.bearer_token,
+            "NSPB_OAUTH2_IDCS_BASE_URL": self.valves.oauth2_idcs_base_url,
+            "NSPB_OAUTH2_CLIENT_ID": self.valves.oauth2_client_id,
+            "NSPB_OAUTH2_SERVICE_INSTANCE_ID": self.valves.oauth2_service_instance_id,
+            "NSPB_OAUTH2_ALLOW_REFRESH": "true" if self.valves.oauth2_allow_refresh else "false",
+            "NSPB_OAUTH2_CLIENT_SECRET": self.valves.oauth2_client_secret,
+        }
+        zero_config = load_config_from_env(getenv=lambda key: valve_values.get(key) or None)
+        if zero_config is not None:
+            # credential_ref resolution (resolve_basic_credentials/resolve_bearer_token in
+            # config.py) always reads from real environment variables, regardless of which
+            # host called load_config_from_env -- that's fine for MCPB/the Claude Code plugin,
+            # where a credential IS a real env var set by the host. Open WebUI's Valves are a
+            # different storage mechanism, so promote the same values into the process
+            # environment here, once, using the exact ref name load_config_from_env just
+            # picked -- this is what makes EPMClient._auth_header()'s later resolution work.
+            conn = zero_config.get("default")
+            if conn.auth_method == "bearer_token":
+                os.environ[conn.credential_ref] = self.valves.bearer_token
+            else:
+                os.environ[f"{conn.credential_ref}_USERNAME"] = self.valves.username
+                os.environ[f"{conn.credential_ref}_PASSWORD"] = self.valves.password
+            if conn.oauth2 and conn.oauth2.client_secret_ref:
+                os.environ[conn.oauth2.client_secret_ref] = self.valves.oauth2_client_secret
+            return zero_config
+
+        raise EPMConfigError(
+            f"No configuration found -- '{self.valves.config_path}' doesn't exist and the Valves "
+            f"'base_url' field is empty. Either point config_path at a real connections.yaml, or "
+            f"fill in base_url (+ credentials) in this tool's Valves for a single connection."
+        )
+
     @contextlib.asynccontextmanager
     async def _client(self, connection: str):
-        cfg = load_config(self.valves.config_path)
+        cfg = self._load_config()
         conn = cfg.get(connection)
         client = EPMClient(conn)
         try:
@@ -73,7 +150,7 @@ class Tools:
 
     def list_connections(self) -> str:
         """List configured customer connections (slug + display name only -- no credentials)."""
-        cfg = load_config(self.valves.config_path)
+        cfg = self._load_config()
         return _render([{"slug": slug, "display_name": conn.display_name} for slug, conn in cfg.connections.items()])
 
     # ---- Applications -------------------------------------------------------

@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -227,11 +227,11 @@ ZERO_CONFIG_SLUG = "default"
 ZERO_CONFIG_CREDENTIAL_REF = "NSPB"
 
 
-def load_config_from_env() -> ToolkitConfig | None:
+def load_config_from_env(getenv: Callable[[str], str | None] | None = None) -> ToolkitConfig | None:
     """Zero-config single-connection mode -- no connections.yaml at all.
 
     For the common single-customer case: add this as an MCP server / Open
-    WebUI tool and fill in a handful of env vars directly in that host's own
+    WebUI tool and fill in a handful of values directly in that host's own
     config UI (Claude Desktop's server config screen, Open WebUI's tool
     Valves) -- never a YAML file, never a value typed into a chat message.
     Returns None if NSPB_BASE_URL isn't set, which is the signal that
@@ -239,8 +239,14 @@ def load_config_from_env() -> ToolkitConfig | None:
     to the normal file-based multi-tenant path (and a real connections.yaml
     always takes priority when both are present, since it's checked first).
 
-    Env vars, all read fresh on every call (nothing cached) so a host that
-    lets an operator edit env vars and restart the server picks up changes
+    `getenv` defaults to `os.environ.get` -- pass a different single-arg
+    lookup function to source these same NSPB_* keys from somewhere other
+    than real environment variables (openwebui_tool.py does this to read
+    from its Valves instead, since Open WebUI's Valves ARE that host's
+    native config-screen mechanism, not env vars).
+
+    Keys, all read fresh on every call (nothing cached) so a host that lets
+    an operator edit values and restart/reinstantiate picks up changes
     immediately, matching every other "reload every time" convention in this
     module:
       NSPB_BASE_URL            required -- the tenant base URL
@@ -254,31 +260,33 @@ def load_config_from_env() -> ToolkitConfig | None:
       NSPB_OAUTH2_CLIENT_SECRET              -- optional (Confidential
                                                  Application registrations)
     """
-    base_url = os.environ.get("NSPB_BASE_URL")
+    get = getenv or os.environ.get
+
+    base_url = get("NSPB_BASE_URL")
     if not base_url:
         return None
 
-    auth_method = os.environ.get("NSPB_AUTH_METHOD", "basic")
-    display_name = os.environ.get("NSPB_DISPLAY_NAME", "Default Connection")
+    auth_method = get("NSPB_AUTH_METHOD") or "basic"
+    display_name = get("NSPB_DISPLAY_NAME") or "Default Connection"
 
     oauth2 = None
     if auth_method == "oauth2":
-        idcs_base_url = os.environ.get("NSPB_OAUTH2_IDCS_BASE_URL")
-        client_id = os.environ.get("NSPB_OAUTH2_CLIENT_ID")
-        service_instance_id = os.environ.get("NSPB_OAUTH2_SERVICE_INSTANCE_ID")
+        idcs_base_url = get("NSPB_OAUTH2_IDCS_BASE_URL")
+        client_id = get("NSPB_OAUTH2_CLIENT_ID")
+        service_instance_id = get("NSPB_OAUTH2_SERVICE_INSTANCE_ID")
         if not (idcs_base_url and client_id and service_instance_id):
             raise EPMConfigError(
                 "Zero-config mode (NSPB_BASE_URL set, no connections.yaml) with "
                 "NSPB_AUTH_METHOD=oauth2 requires NSPB_OAUTH2_IDCS_BASE_URL, "
                 "NSPB_OAUTH2_CLIENT_ID, and NSPB_OAUTH2_SERVICE_INSTANCE_ID."
             )
-        allow_refresh_raw = os.environ.get("NSPB_OAUTH2_ALLOW_REFRESH", "true").strip().lower()
+        allow_refresh_raw = (get("NSPB_OAUTH2_ALLOW_REFRESH") or "true").strip().lower()
         oauth2 = OAuth2Config(
             idcs_base_url=idcs_base_url,
             client_id=client_id,
             service_instance_id=service_instance_id,
             allow_refresh=allow_refresh_raw not in ("false", "0", "no"),
-            client_secret_ref="NSPB_OAUTH2_CLIENT_SECRET" if os.environ.get("NSPB_OAUTH2_CLIENT_SECRET") else None,
+            client_secret_ref="NSPB_OAUTH2_CLIENT_SECRET" if get("NSPB_OAUTH2_CLIENT_SECRET") else None,
         )
 
     # bearer_token resolves credential_ref AS the literal env var name (see
