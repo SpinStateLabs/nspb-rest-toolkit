@@ -327,6 +327,28 @@ matter for a public marketplace listing). Neither was asked for yet.
       for this site, same as the three already set -- never through chat.
    4. Push (or just re-trigger a deploy) once `DATABASE_URL` is set to get a clean build.
 
+   **Update, same day: the deploy actually succeeded** (58 files, 3 functions, 36s build) once
+   `@netlify/database` was dropped -- confirmed live: `/mcp` and `/api/connections` correctly 401
+   "Missing or malformed Authorization header" on an unauthenticated request (real auth.ts code running).
+   **But found a real problem with the Netlify env-var tooling**: `manage-env-vars`'s `upsertEnvVar`
+   consistently reports "Environment variable upserted" (success) for `AUTH0_DOMAIN`/`AUTH0_AUDIENCE`/
+   `CREDENTIALS_ENCRYPTION_KEY`, but an immediate `getAllEnvVars` read-back shows an empty array every time
+   -- and a live authenticated request to `/mcp` throws a real, unhandled `Error: AUTH0_AUDIENCE is not set`
+   from inside `requireEnv()`, confirming this isn't just a read-tool display bug: the values genuinely never
+   reached the deployed function's runtime environment despite the tool's success response. **Don't trust this
+   MCP tool's env-var writes for this site again without verifying against a live function error afterward**
+   -- asked the user to set all three (plus `DATABASE_URL` once available) directly in Netlify's dashboard UI
+   instead, which is also consistent with the standing "config screen, not through me" pattern for anything
+   secret-adjacent.
+   - `npx netlify db init` was also retried properly (in case it could sidestep the whole DATABASE_URL/Neon
+     dashboard dance) -- hit an unrelated, pre-existing environment issue on this machine first: bare
+     `npx netlify-cli ...` and `npx --package=netlify-cli -c "..."` both fail with `Cannot find module
+     'C:\Program Files\nodejs\node_modules\netlify-cli\bin\run.js'`, even though that directory doesn't
+     actually contain a netlify-cli folder (`ls` confirms) and `npm list -g netlify-cli` shows nothing
+     installed there either -- some Node/npm path-resolution quirk on this Windows machine unrelated to the
+     project itself, not diagnosed further since the DATABASE_URL-via-dashboard path already works and
+     doesn't depend on this CLI at all.
+
 ## Open questions from the original task brief, still never answered
 
 1. License/distribution model — open-source repo vs. handing over a built wheel/zip. Flagged explicitly in
