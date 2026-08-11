@@ -42,6 +42,20 @@ function getPool(): pg.Pool {
       // serverless Postgres from Node -- revisit if DATABASE_URL ever points
       // at a database where this laxer setting isn't appropriate.
       ssl: connectionString.includes("sslmode=require") ? { rejectUnauthorized: false } : undefined,
+      // node-postgres defaults connectionTimeoutMillis to 0 (wait forever).
+      // On a serverless free-tier Postgres (Neon) that auto-suspends after
+      // idling, the first request after a lull has to wait for a cold-start
+      // wake-up; without a bound here, a slow/stuck connection just hangs
+      // until Netlify's own function timeout kills the invocation -- which
+      // surfaces to the caller as a bare, detail-free "server returned an
+      // error" rather than a diagnosable one. Fail fast instead so it comes
+      // back as a real error our code can log and convert to a clean 500.
+      connectionTimeoutMillis: 8_000,
+      // Keep the pool small and quick to recycle idle connections -- each
+      // function invocation is short-lived, so there's no benefit to
+      // node-postgres's 10-connection default sitting around.
+      max: 3,
+      idleTimeoutMillis: 10_000,
     });
   }
   return pool;
