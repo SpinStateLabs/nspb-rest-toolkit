@@ -19,7 +19,13 @@
  */
 import type { Config } from "@netlify/functions";
 import { authenticate, AuthError } from "./lib/auth.js";
-import { listConnections, getResolvedConnection } from "./lib/connections-repo.js";
+import {
+  listConnections,
+  getResolvedConnection,
+  upsertConnection,
+  deleteConnection,
+  type ConnectionWrite,
+} from "./lib/connections-repo.js";
 import { listApplications, OracleApiError } from "./lib/oracle-client.js";
 import { corsGuard } from "./lib/cors.js";
 
@@ -52,6 +58,41 @@ const TOOLS = [
   {
     name: "list_applications",
     description: "List the Planning applications a connection's credentials are assigned to. Read-only.",
+    inputSchema: {
+      type: "object",
+      properties: { connection: { type: "string", description: "Connection slug from list_connections." } },
+      required: ["connection"],
+    },
+  },
+  {
+    name: "add_connection",
+    description:
+      "Create or update one of your Oracle EPM Cloud connections. Credentials are encrypted at rest " +
+      "and never echoed back in any response. Calling this again with the same slug updates that " +
+      "connection (a blank/omitted credential field leaves the previously stored one unchanged). " +
+      "Only 'basic' and 'bearer_token' auth are usable for tool calls on this remote surface today " +
+      "-- oauth2 connections aren't supported here yet, use the local desktop/CLI toolkit for those.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string", description: "Short unique identifier, e.g. 'bpc'. Lowercase, no spaces." },
+        display_name: { type: "string", description: "Human-readable name shown in list_connections." },
+        base_url: {
+          type: "string",
+          description: "Oracle EPM Planning base URL, e.g. https://your-tenant.epm.us-ashburn-1.ocs.oraclecloud.com",
+        },
+        auth_method: { type: "string", enum: ["basic", "bearer_token"] },
+        username: { type: "string", description: "Required when auth_method is 'basic'." },
+        password: { type: "string", description: "Required when auth_method is 'basic'." },
+        bearer_token: { type: "string", description: "Required when auth_method is 'bearer_token'." },
+        default_application: { type: "string", description: "Optional default Planning application name." },
+      },
+      required: ["slug", "display_name", "base_url", "auth_method"],
+    },
+  },
+  {
+    name: "delete_connection",
+    description: "Permanently delete one of your Oracle EPM Cloud connections.",
     inputSchema: {
       type: "object",
       properties: { connection: { type: "string", description: "Connection slug from list_connections." } },
@@ -141,6 +182,62 @@ async function handle(req: Request): Promise<Response> {
             const message = err instanceof OracleApiError ? err.message : String(err);
             return jsonRpcResult(id, { isError: true, content: [{ type: "text", text: message }] });
           }
+        }
+
+        if (toolName === "add_connection") {
+          const slug = args.slug as string | undefined;
+          const displayName = args.display_name as string | undefined;
+          const baseUrl = args.base_url as string | undefined;
+          const authMethod = args.auth_method as ConnectionWrite["authMethod"] | undefined;
+          if (!slug || !displayName || !baseUrl || !authMethod) {
+            return jsonRpcError(id, -32602, "slug, display_name, base_url, and auth_method are all required.");
+          }
+          if (authMethod !== "basic" && authMethod !== "bearer_token") {
+            return jsonRpcResult(id, {
+              isError: true,
+              content: [{ type: "text", text: "auth_method must be 'basic' or 'bearer_token' on this remote surface." }],
+            });
+          }
+          if (authMethod === "basic" && !(args.username && args.password)) {
+            return jsonRpcResult(id, {
+              isError: true,
+              content: [{ type: "text", text: "auth_method 'basic' requires both 'username' and 'password'." }],
+            });
+          }
+          if (authMethod === "bearer_token" && !args.bearer_token) {
+            return jsonRpcResult(id, {
+              isError: true,
+              content: [{ type: "text", text: "auth_method 'bearer_token' requires 'bearer_token'." }],
+            });
+          }
+          const write: ConnectionWrite = {
+            displayName,
+            baseUrl,
+            authMethod,
+            defaultApplication: (args.default_application as string | undefined) ?? null,
+            basicUsername: (args.username as string | undefined) ?? null,
+            basicPassword: (args.password as string | undefined) ?? null,
+            bearerToken: (args.bearer_token as string | undefined) ?? null,
+          };
+          const conn = await upsertConnection(customer.customerId, slug, write);
+          return jsonRpcResult(id, {
+            content: [
+              {
+                type: "text",
+                text: `Saved connection '${conn.slug}' (${conn.displayName}, ${conn.authMethod}). Credentials are encrypted at rest and were not echoed back.`,
+              },
+            ],
+          });
+        }
+
+        if (toolName === "delete_connection") {
+          const slug = args.connection as string | undefined;
+          if (!slug) return jsonRpcError(id, -32602, "Missing required argument 'connection'.");
+          const deleted = await deleteConnection(customer.customerId, slug);
+          return jsonRpcResult(id, {
+            isError: !deleted,
+            content: [{ type: "text", text: deleted ? `Deleted connection '${slug}'.` : `No connection named '${slug}'.` }],
+          });
         }
 
         return jsonRpcError(id, -32601, `Unknown tool '${toolName}'.`);

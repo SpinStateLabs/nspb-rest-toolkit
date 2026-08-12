@@ -374,6 +374,72 @@ matter for a public marketplace listing). Neither was asked for yet.
      user but never independently re-verified working end-to-end -- worth confirming during the claude.ai
      connector test above, since that's the first time a real dynamic registration would actually fire.
 
+## 2026-08-11 session: the claude.ai connector is now fully verified working end-to-end
+
+Picked up from the "not yet tested" gap above. What actually happened, in order — six distinct real bugs,
+not one:
+
+1. **CORS was entirely missing** from `mcp.mts`, `connections.mts`, and `oauth-protected-resource.mts` -- no
+   `OPTIONS` handling, no `Access-Control-Allow-*` headers anywhere. claude.ai's connector runs in-browser,
+   so any cross-origin request carrying the `Authorization` header needs a CORS preflight; without it the
+   browser silently blocked every request before it reached the server, surfacing as claude.ai's generic
+   "Couldn't connect to the server." Fixed with a shared `netlify/functions/lib/cors.ts` (`corsGuard()`
+   wraps every handler) so no future code path can skip CORS again.
+2. **A DB error in `authenticate()` could skip the CORS wrapper entirely.** The customer lookup/insert ran
+   outside any try/catch, so an unhandled exception there propagated past `corsGuard`, producing Netlify's
+   own default error page with no CORS headers -- indistinguishable from "can't connect" to the browser.
+   Fixed: wrapped in try/catch, converts to a proper 500 `AuthError` instead of an uncaught throw.
+3. **Auth0 Free plan's 10-app cap kept getting exhausted.** Every single "Connect"/"Reconnect" click
+   registers a *brand-new* DCR client (`tpc_...`), win or lose, and nothing cleans up the losers. Deleted the
+   accumulated orphans **three separate times** this session (8 apps each time) before recognizing the
+   pattern was structural, not a one-off. **Durable fix**: stopped relying on DCR for this connection
+   entirely -- created a permanent Auth0 "Regular Web Application" (`NSPB Rest Tools (claude.ai)`, first-party,
+   callback URL `https://claude.ai/api/mcp/auth_callback`, confirmed from a DCR app's own config before it was
+   deleted) and entered its static Client ID + Secret into claude.ai's connector "Advanced settings" fields
+   (the modal's `OAuth Client ID (optional)` / `OAuth Client Secret (optional)`) instead of leaving them
+   blank. This is the one you want for your own connection going forward -- DCR remains the fallback path for
+   *other* customers who don't set a static client, and is a real scaling concern flagged again below.
+4. **The `NSPB` Auth0 API had `User-delegated Access` set to "Per-app authorization."** Combined with #3,
+   this meant *no* client -- DCR or otherwise -- could ever be pre-authorized, since each is either ephemeral
+   or, for the static one, never manually added to an allowlist. This is what "Authorization with NSPB Rest
+   Tools failed" (after a *successful* Auth0 login) actually meant. Fixed: API Settings → Application Access
+   Policy → User-delegated Access → **All apps allowed**. This is the correct setting for a resource server
+   meant to be used by dynamically-registered/public clients; it does not weaken per-request auth -- a valid
+   Auth0-issued token is still required for every call.
+5. **`pg.Pool` had no `connectionTimeoutMillis`** (node-postgres default: wait forever). On Neon's free tier,
+   which auto-suspends when idle, a cold-start reconnect could hang past Netlify's own function timeout,
+   surfacing as an opaque failure with zero diagnostic value. Added `connectionTimeoutMillis: 8_000`, `max: 3`,
+   `idleTimeoutMillis: 10_000` in `lib/db.ts` -- fails fast with a real, loggable error instead.
+6. **The actual final blocker, found only by reading live Netlify function logs**: `AUTH0_AUDIENCE` had
+   silently disappeared from Netlify's env vars entirely -- the exact `Error: AUTH0_AUDIENCE is not set`
+   crash documented earlier in this file as fixed on 2026-08-01 had **silently recurred** by 2026-08-11, with
+   no intervening deploy or dashboard action visible in the deploy log to explain it. Given the
+   already-documented `manage-env-vars` unreliability above, this is almost certainly the same root cause
+   resurfacing, not a new one. Fixed the same way: set it directly in Netlify's dashboard UI (value
+   `https://nspb-rest-toolkit.netlify.app/mcp`, matching the `NSPB` API identifier), then triggered a
+   "Deploy project without cache" -- **env var changes did not take effect for already-warm function
+   instances without a fresh deploy**, worth remembering next time this class of bug shows up.
+   **If `AUTH0_AUDIENCE is not set` ever comes back a third time, don't re-diagnose from scratch: go straight
+   to Netlify's env vars page and check it's still there before touching anything else.**
+
+**Verified working, live, end-to-end**: claude.ai's connector shows "Disconnect" (connected) and correctly
+lists both tools (`List applications`, `List connections`) via a real authenticated `tools/list`. Asked
+Claude (through claude.ai's own chat, driving the connector for real) to call `list_connections` -- it
+returned `[]`, the correct answer for a brand-new customer row with no Oracle EPM connections configured yet.
+This is a genuine, non-synthetic confirmation of the full pipeline: Auth0 login → token issuance → JWKS
+verification → customer upsert → `tools/call` → Postgres round-trip → response back through claude.ai's UI.
+
+**Still open, not addressed this session:**
+- The stale duplicate Auth0 API (`NSPB REST Toolkit`, audience `https://nspb-rest-toolkit.spinstatelabs.com/api`)
+  from the original placeholder-identifier mixup is still sitting in the tenant, unused. Low priority to
+  clean up (harmless as long as nothing points a client at it) but worth deleting for tenant hygiene.
+- DCR-based connections (any customer who doesn't set a static Client ID) will still hit the 10-app cap
+  quickly on the Free plan -- this needs a real answer before onboarding actual customers: either the paid
+  Auth0 plan, a scheduled cleanup job for orphaned `tpc_...` apps, or steering every customer toward the
+  static-client setup flow instead of relying on DCR by default.
+- Recommended (twice now, still not acted on): rotate the Neon database password, since a raw connection
+  string was pasted into chat during the original Aug 1 session.
+
 ## Open questions from the original task brief, still never answered
 
 1. License/distribution model — open-source repo vs. handing over a built wheel/zip. Flagged explicitly in
