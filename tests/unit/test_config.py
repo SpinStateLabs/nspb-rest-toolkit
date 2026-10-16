@@ -189,8 +189,8 @@ def test_resolve_basic_credentials(monkeypatch):
 
 
 def test_resolve_oauth2_client_secret(monkeypatch):
-    monkeypatch.setenv("EXAMPLE_OAUTH2_SECRET", "s3cr3t")
-    assert resolve_oauth2_client_secret("EXAMPLE_OAUTH2_SECRET") == "s3cr3t"
+    monkeypatch.setenv("CORP_OAUTH2_SECRET", "s3cr3t")
+    assert resolve_oauth2_client_secret("CORP_OAUTH2_SECRET") == "s3cr3t"
 
 
 # ---- save_config (dashboard write path) -----------------------------------------
@@ -213,17 +213,17 @@ def test_save_config_round_trips_oauth2_connection_with_new_fields(tmp_path):
     path = tmp_path / "connections.yaml"
     cfg = ToolkitConfig(
         connections={
-            "example-oauth2": ConnectionConfig(
-                display_name="Example OAuth2",
+            "corp-oauth2": ConnectionConfig(
+                display_name="Company OAuth2",
                 base_url="https://tenant.example.com",
                 auth_method="oauth2",
-                credential_ref="EXAMPLE",
+                credential_ref="CORP",
                 oauth2=OAuth2Config(
                     idcs_base_url="https://idcs-abc.identity.oraclecloud.com",
                     client_id="client-1",
                     service_instance_id="123456",
                     allow_refresh=False,
-                    client_secret_ref="EXAMPLE_OAUTH2_SECRET",
+                    client_secret_ref="CORP_OAUTH2_SECRET",
                 ),
             )
         }
@@ -231,10 +231,10 @@ def test_save_config_round_trips_oauth2_connection_with_new_fields(tmp_path):
 
     save_config(cfg, path)
     reloaded = load_config(path)
-    conn = reloaded.get("example-oauth2")
+    conn = reloaded.get("corp-oauth2")
 
     assert conn.oauth2.allow_refresh is False
-    assert conn.oauth2.client_secret_ref == "EXAMPLE_OAUTH2_SECRET"
+    assert conn.oauth2.client_secret_ref == "CORP_OAUTH2_SECRET"
     # Never a plaintext secret on disk -- only the *_ref name.
     assert "s3cr3t" not in path.read_text(encoding="utf-8")
 

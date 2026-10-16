@@ -182,7 +182,7 @@ configuration tab -> Edit OAuth configuration -> enable "Add secondary audience"
 base URL (exactly `base_url` above, no trailing path) -> Save. Without this, every API call fails with
 `WWW-Authenticate: Bearer error="invalid_token", error_description="Token Audience"` even though the device
 code bootstrap itself succeeds -- the token gets issued, it's just not accepted by the Planning REST API.
-Live-confirmed 2026-08-01 against a real Planning app registration.
+Live-confirmed 2026-08-01 against Corp's `Planning_nspb` app registration.
 
 **Session-only access (`allow_refresh: false`):** for apps with "Allow token refresh: Disallowed" in their
 OAuth configuration, or when you deliberately don't want persistent unattended reuse (e.g. one access token
