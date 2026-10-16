@@ -455,11 +455,11 @@ async def test_allow_refresh_false_expired_token_raises_clear_error_without_netw
 
 
 async def test_client_secret_ref_sends_http_basic_auth_on_device_and_token_calls(tmp_path, monkeypatch):
-    monkeypatch.setenv("EXAMPLE_OAUTH2_SECRET", "s3cr3t")
+    monkeypatch.setenv("CORP_OAUTH2_SECRET", "s3cr3t")
     conn = make_conn(
         tmp_path,
         oauth2=make_oauth2_config(
-            token_cache_path=str(tmp_path / "c.json"), client_secret_ref="EXAMPLE_OAUTH2_SECRET"
+            token_cache_path=str(tmp_path / "c.json"), client_secret_ref="CORP_OAUTH2_SECRET"
         ),
     )
     with respx.mock:

@@ -75,7 +75,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        slug: { type: "string", description: "Short unique identifier, e.g. 'prod'. Lowercase, no spaces." },
+        slug: { type: "string", description: "Short unique identifier, e.g. 'corp'. Lowercase, no spaces." },
         display_name: { type: "string", description: "Human-readable name shown in list_connections." },
         base_url: {
           type: "string",
