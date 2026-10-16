@@ -43,7 +43,7 @@ All notable changes to this project are documented in this file.
   Version_1"`) that aren't safe unescaped in a URL path. The two read operations are live-confirmed; the
   destructive `change_planning_unit_status` is documentation-confirmed only (not live-tested).
 
-- **Live-discovered (2026-08-01), OAuth2 live-tested for the first time against BPC's `Planning_nspb` app
+- **Live-discovered (2026-08-01), OAuth2 live-tested for the first time against a real Planning app
   registration:** three real gaps the unit-tested-only flow never hit. (1) That app registration has "Allow
   token refresh: Disallowed" -- requesting `offline_access` scope (needed for a refresh_token) got the whole
   device-code request rejected with `unauthorized_client: The resource does not support offline access`, not
@@ -70,7 +70,7 @@ All notable changes to this project are documented in this file.
   `config.save_config()` (atomic write, re-validates the no-plaintext-secrets rule on the way out, same as
   `load_config()` on the way in) -- no route ever accepts or returns a resolved secret value. Live-verified
   end to end in a real browser (list/add/edit/delete, plus the test endpoint's clean failure message when
-  credentials aren't set) and against the real BPC config on GX10.
+  credentials aren't set) and against a real connection config on GX10.
 
 - **Added (2026-08-01, follow-up session): zero-config env-var mode + two one-click install packages.**
   Built after the user explicitly rejected the terminal-copy-paste workflow this project had been using and

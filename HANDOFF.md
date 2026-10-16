@@ -9,18 +9,18 @@ else in this repo — it captures state that isn't obvious from the code alone.
   uncommitted working-tree state. Don't commit without asking the user first (per standing git-safety rules)
   unless they've explicitly asked for a commit by the time you read this.
 - **67/67 unit tests pass**, all respx-mocked, zero live network (`pytest tests/unit -v`).
-- `connections.yaml` exists at the repo root with a real `bpc` connection (Basic Auth) pointed at Bipartisan
-  Policy Center's tenant. It's gitignored — never remove that `.gitignore` line.
+- `connections.yaml` exists at the repo root with a real `example` connection (Basic Auth) pointed at the primary test
+  tenant. It's gitignored — never remove that `.gitignore` line.
 - Full project memory lives at `[[nspb-rest-toolkit]]` in the auto-memory system — read that too, it has the
   architecture overview this file doesn't repeat.
 
-## What's built and live-verified (not just claimed — actually run against BPC)
+## What's built and live-verified (not just claimed — actually run against a real tenant)
 
 Auth: three methods, all user-selectable per connection (`auth_method: basic | oauth2 | bearer_token`).
-Basic Auth is what's been live-tested; BPC accepts it fine (no MFA on that tenant). OAuth2 (Device Code +
+Basic Auth is what's been live-tested; the test tenant accepts it fine (no MFA on that tenant). OAuth2 (Device Code +
 Refresh Token) and Bearer token are built and unit-tested but **never live-tested** — see "Next up" below.
 
-Read-only endpoints confirmed working live against BPC (app name `NetSuite`):
+Read-only endpoints confirmed working live against the test tenant:
 `list_applications`, `get_application_summary`, `list_plan_types`, `list_dimensions`, `get_dimension`,
 `list_substitution_variables`, `get_substitution_variable`, `get_migration_status`,
 `get_migration_api_versions`. Run `scripts/live_read_only_check.py` to re-verify any of these after a change
@@ -31,7 +31,7 @@ Still untested live: `security.export_security`/`export_cell_level_security` (ex
 write a file into Oracle's repository as a side effect), `forms.*` (no "list forms" REST resource exists, so
 there's no name to discover without the user supplying one), job-status-by-ID endpoints (need a real job ID
 this session never submitted), and the Approvals/Planning Units read endpoints (need real
-`scenario`/`version` names for BPC — not discoverable from any other read call; set `NSPB_SMOKE_SCENARIO` /
+`scenario`/`version` names for the test tenant — not discoverable from any other read call; set `NSPB_SMOKE_SCENARIO` /
 `NSPB_SMOKE_VERSION` env vars if you get real values from the user).
 
 ## Three real bugs found by live testing that NO mocked test caught (all fixed now)
@@ -66,12 +66,12 @@ of httpx's `data=`. If httpx is ever upgraded, it's worth re-testing whether thi
 
 ## Security incident this session — status check needed
 
-The real BPC password got exposed twice: once via a `Windows-MCP` `Snapshot` call that captured a KeePass
+The real tenant password got exposed twice: once via a `Windows-MCP` `Snapshot` call that captured a KeePass
 "Edit Entry" dialog's plaintext Password field (accessibility-tree text extraction, not just a screenshot
 pixel), and once via a diagnostic script (`scripts/diag_planning_units_415.py`) that printed an unredacted
 `Authorization` header, which then appeared in a screenshot and a user-pasted terminal transcript. The
 script's redaction bug is fixed. **The user said "I will rotate the key in the meantime" — confirm this
-actually happened before treating BPC credentials as trustworthy again.** Full writeup:
+actually happened before treating the tenant credentials as trustworthy again.** Full writeup:
 `[[feedback-desktop-automation-secret-exposure]]` in memory.
 
 **Credential handling ground rule for this whole project, re-learned the hard way:** never touch, request,
@@ -97,29 +97,29 @@ HTTP request/response, redact `Authorization` explicitly — it does not happen 
    box. Python 3.12.3 confirmed available there. Created a fresh `.venv`, `pip install -e .`, then
    `pip install pytest pytest-asyncio respx` and ran `pytest tests/unit -q` — **67/67 pass**, matching the
    local result. Recreated `connections.yaml` at `~/projects/nspb-rest-toolkit/connections.yaml` (chmod 600)
-   with the same `bpc` entry and `credential_ref: BPC` — no credentials baked in, same env-var pattern as
+   with the same `example` entry and `credential_ref: EXAMPLE` — no credentials baked in, same env-var pattern as
    local.
 
-   **Live testing from GX10 is still blocked** — the user confirmed the BPC password has **NOT been rotated
-   yet** despite the two prior exposures (see "Security incident" section below), so no live BPC calls were
+   **Live testing from GX10 is still blocked** — the user confirmed the tenant password has **NOT been rotated
+   yet** despite the two prior exposures (see "Security incident" section below), so no live calls were
    made or attempted from this session, and no credential env vars were set. Per the credential-handling
    ground rule, that has to happen in the user's own GX10 shell session, not here. Once rotation is
    confirmed, the user can run (from `ssh gx10`, in `~/projects/nspb-rest-toolkit`):
 
    ```
    export NSPB_SMOKE_CONNECTION_CONFIG=~/projects/nspb-rest-toolkit/connections.yaml
-   export NSPB_SMOKE_CONNECTION=bpc
-   export BPC_USERNAME=donhagell@gmail.com
-   export BPC_PASSWORD=<the rotated password>
+   export NSPB_SMOKE_CONNECTION=example
+   export EXAMPLE_USERNAME=<your-username>
+   export EXAMPLE_PASSWORD=<the rotated password>
    .venv/bin/python scripts/live_read_only_check.py
    ```
 
    (env var names per `tests/smoke/conftest.py`'s docstring: `<CREDENTIAL_REF>_USERNAME` /
-   `<CREDENTIAL_REF>_PASSWORD`, i.e. `BPC_USERNAME` / `BPC_PASSWORD` for this connection's `credential_ref:
-   BPC`). Nothing further needed from the assistant side for this step until that's done — do not set these
+   `<CREDENTIAL_REF>_PASSWORD`, i.e. `EXAMPLE_USERNAME` / `EXAMPLE_PASSWORD` for this connection's `credential_ref:
+   EXAMPLE`). Nothing further needed from the assistant side for this step until that's done — do not set these
    env vars or request the password in a hosted session.
 3. ~~"need to test the oath too" (OAuth2)~~ — **done, live-verified 2026-08-01 (follow-up session)**, all
-   9 applicable read-only checks PASS via `auth_method: oauth2` against BPC's `Planning_nspb` app
+   9 applicable read-only checks PASS via `auth_method: oauth2` against the `Planning_nspb` app
    registration. This needed three real fixes beyond the original unit-tested-only implementation — see
    CHANGELOG.md's "Live-discovered (2026-08-01), OAuth2 live-tested for the first time" entry for full
    detail, summary here:
@@ -135,9 +135,9 @@ HTTP request/response, redact `Authorization` explicitly — it does not happen 
      registration had no "secondary audience" configured — a one-time Oracle Cloud Console setup step (Oracle
      Cloud Services tab → the EPM service → OAuth configuration → Edit → Add secondary audience → the
      instance's base URL) that this toolkit can't do itself. User did this, then the flow worked clean.
-   - `connections.yaml` now has a `bpc-oauth2` entry (alongside the original `bpc` Basic Auth entry) with
-     `allow_refresh: false` and `client_secret_ref: "BPC_OAUTH2_CLIENT_SECRET"`. Token cache lives at
-     `~/.nspb-rest-toolkit/tokens/bpc-oauth2.json` on GX10 (that's where the bootstrap was run, per item 2
+   - `connections.yaml` now has an `example-oauth2` entry (alongside the original `example` Basic Auth entry) with
+     `allow_refresh: false` and `client_secret_ref: "EXAMPLE_OAUTH2_CLIENT_SECRET"`. Token cache lives at
+     `~/.nspb-rest-toolkit/tokens/example-oauth2.json` on GX10 (that's where the bootstrap was run, per item 2
      above) — expires ~1hr after each bootstrap since refresh is disallowed; re-run the bootstrap command
      (README.md's oauth2 section has the exact command) to get a fresh one when needed.
    - Discovered along the way: the SSH config for `ssh gx10` lives in `~/.ssh/config` on the user's own PC
@@ -161,10 +161,10 @@ HTTP request/response, redact `Authorization` explicitly — it does not happen 
    - 21 new unit tests (`test_config.py`'s `save_config` round-trip tests, `test_dashboard_api.py`'s full CRUD
      + test-endpoint coverage) — 94/94 total now pass, both locally and on GX10.
    - Live-verified twice: once in a real browser locally against an isolated demo config (full
-     add/edit/delete/test cycle, confirmed file writes on disk), and once against the **real BPC config on
+     add/edit/delete/test cycle, confirmed file writes on disk), and once against the **real connection config on
      GX10** (user ran it themselves via `ssh gx10` on a free port — 8000 turned out to already be occupied by
-     an unrelated service on that shared box — and confirmed in their own browser: `bpc`'s Test fails cleanly
-     on missing credentials, `bpc-oauth2`'s Test succeeds live in ~250ms showing 1 application visible).
+     an unrelated service on that shared box — and confirmed in their own browser: `example`'s Test fails cleanly
+     on missing credentials, `example-oauth2`'s Test succeeds live in ~250ms showing 1 application visible).
 
 ## Distribution packaging -- done, 2026-08-01 follow-up session (same day as the dashboard/OAuth2 work)
 

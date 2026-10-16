@@ -5,7 +5,7 @@ feeds real names discovered from an earlier step into the next), run
 directly by whoever holds the credentials, in their own terminal:
 
     $env:NSPB_SMOKE_CONNECTION_CONFIG = "connections.yaml"
-    $env:NSPB_SMOKE_CONNECTION = "bpc"
+    $env:NSPB_SMOKE_CONNECTION = "my-connection"
     # + <credential_ref>_USERNAME / <credential_ref>_PASSWORD (or the
     #   connection's oauth2/bearer_token credential) already set
     .\.venv\Scripts\python.exe scripts\live_read_only_check.py
